@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VOICE — a GenAI feedback-writing heuristic</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#F1F3EA;
+    --card:#FFFFFF;
+    --ink:#22301F;
+    --ink-soft:#5B6555;
+    --forest:#2F5233;
+    --forest-dark:#1F3922;
+    --mustard:#D9A441;
+    --mustard-dark:#8A5F1E;
+    --rose:#C97B84;
+    --rose-dark:#824650;
+    --line:#DADFCC;
+    --band-low:#C15B4E;
+    --band-mid:#D9A441;
+    --band-high:#3B7A46;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--paper);
+    color:var(--ink);
+    font-family:'Inter',sans-serif;
+    padding:2.5rem 1.25rem 4rem;
+  }
+  .wrap{max-width:760px;margin:0 auto;}
+
+  header{margin-bottom:2.25rem;text-align:center;}
+  .eyebrow{
+    font-size:12px;
+    letter-spacing:0.14em;
+    text-transform:uppercase;
+    color:var(--ink-soft);
+    font-weight:600;
+    margin-bottom:0.6rem;
+  }
+  .blocks{
+    display:flex;
+    justify-content:center;
+    gap:8px;
+    margin-bottom:1rem;
+    flex-wrap:wrap;
+  }
+  .block{
+    width:52px;height:52px;
+    background:var(--forest);
+    color:#F1F3EA;
+    border-radius:8px;
+    display:flex;align-items:center;justify-content:center;
+    font-family:'Fraunces',serif;
+    font-weight:700;
+    font-size:26px;
+    box-shadow:0 3px 0 var(--forest-dark);
+  }
+  .block:nth-child(2){background:var(--mustard);color:#3B2A0C;box-shadow:0 3px 0 var(--mustard-dark);}
+  .block:nth-child(3){background:var(--rose);color:#3E1C21;box-shadow:0 3px 0 var(--rose-dark);}
+  .block:nth-child(4){background:var(--forest);box-shadow:0 3px 0 var(--forest-dark);}
+  .block:nth-child(5){background:var(--mustard);color:#3B2A0C;box-shadow:0 3px 0 var(--mustard-dark);}
+
+  h1{
+    font-family:'Fraunces',serif;
+    font-weight:600;
+    font-size:1.6rem;
+    margin:0 0 0.4rem;
+  }
+  .sub{
+    color:var(--ink-soft);
+    font-size:14.5px;
+    max-width:480px;
+    margin:0 auto;
+    line-height:1.55;
+  }
+
+  .score-panel{
+    background:var(--card);
+    border:1px solid var(--line);
+    border-radius:14px;
+    padding:1.1rem 1.3rem;
+    margin-bottom:1.75rem;
+    position:sticky;
+    top:12px;
+    z-index:5;
+  }
+  .score-row{
+    display:flex;
+    align-items:baseline;
+    justify-content:space-between;
+    gap:1rem;
+    margin-bottom:0.6rem;
+  }
+  .score-num{
+    font-family:'Fraunces',serif;
+    font-weight:600;
+    font-size:1.9rem;
+  }
+  .score-max{font-size:13px;color:var(--ink-soft);}
+  .score-band{
+    font-size:13.5px;
+    font-weight:600;
+    padding:3px 10px;
+    border-radius:999px;
+  }
+  .band-low{background:#F7E2DE;color:var(--band-low);}
+  .band-mid{background:#F7EBD3;color:#8A5F1E;}
+  .band-high{background:#DCEEDC;color:var(--band-high);}
+  .track{
+    height:8px;
+    border-radius:999px;
+    background:var(--line);
+    overflow:hidden;
+  }
+  .track-fill{
+    height:100%;
+    border-radius:999px;
+    background:var(--forest);
+    width:0%;
+    transition:width 0.35s ease;
+  }
+  .band-note{font-size:13px;color:var(--ink-soft);margin-top:0.55rem;line-height:1.5;}
+
+  .category{
+    background:var(--card);
+    border:1px solid var(--line);
+    border-radius:14px;
+    margin-bottom:0.85rem;
+    overflow:hidden;
+  }
+  .cat-head{
+    display:flex;
+    align-items:center;
+    gap:12px;
+    padding:0.95rem 1.2rem;
+    cursor:pointer;
+    user-select:none;
+  }
+  .cat-letter{
+    width:34px;height:34px;
+    min-width:34px;
+    border-radius:8px;
+    display:flex;align-items:center;justify-content:center;
+    font-family:'Fraunces',serif;
+    font-weight:700;
+    font-size:16px;
+    color:#F1F3EA;
+  }
+  .cat-title{
+    font-family:'Fraunces',serif;
+    font-weight:600;
+    font-size:15.5px;
+    flex:1;
+  }
+  .cat-title span{
+    display:block;
+    font-family:'Inter',sans-serif;
+    font-weight:400;
+    font-size:12.5px;
+    color:var(--ink-soft);
+    margin-top:1px;
+  }
+  .cat-caret{
+    font-size:13px;
+    color:var(--ink-soft);
+    transition:transform 0.2s ease;
+  }
+  .category.open .cat-caret{transform:rotate(180deg);}
+
+  .cat-body{
+    max-height:0;
+    overflow:hidden;
+    transition:max-height 0.3s ease;
+    border-top:1px solid transparent;
+  }
+  .category.open .cat-body{
+    border-top:1px solid var(--line);
+  }
+
+  .reading-note{
+    font-size:12.5px;
+    color:var(--ink-soft);
+    font-style:italic;
+    padding:0.75rem 1.2rem 0;
+    line-height:1.5;
+  }
+
+  .question{
+    padding:0.85rem 1.2rem;
+    border-bottom:1px solid var(--line);
+  }
+  .question:last-child{border-bottom:none;}
+  .q-text{font-size:14px;line-height:1.5;margin-bottom:0.55rem;}
+  .options{
+    display:grid;
+    grid-template-columns:repeat(4,1fr);
+    gap:6px;
+  }
+  .opt{
+    border:1px solid var(--line);
+    background:var(--paper);
+    border-radius:8px;
+    padding:6px 4px;
+    font-size:11.5px;
+    text-align:center;
+    color:var(--ink-soft);
+    cursor:pointer;
+    line-height:1.3;
+  }
+  .opt.selected{
+    background:var(--forest);
+    border-color:var(--forest);
+    color:#F1F3EA;
+    font-weight:600;
+  }
+
+  .reflect{
+    background:var(--card);
+    border:1px solid var(--line);
+    border-radius:14px;
+    padding:1.2rem 1.3rem;
+    margin-top:1.5rem;
+    display:none;
+  }
+  .reflect.show{display:block;}
+  .reflect-title{
+    font-family:'Fraunces',serif;
+    font-weight:600;
+    font-size:15.5px;
+    margin-bottom:0.3rem;
+  }
+  .reflect-sub{
+    font-size:13px;
+    color:var(--ink-soft);
+    line-height:1.55;
+    margin-bottom:0.9rem;
+  }
+  .reflect-list{
+    margin:0;
+    padding:0;
+    list-style:none;
+  }
+  .reflect-item{
+    display:flex;
+    gap:10px;
+    padding:0.7rem 0;
+    border-top:1px solid var(--line);
+  }
+  .reflect-item:first-child{border-top:none;}
+  .reflect-num{
+    width:26px;height:26px;
+    min-width:26px;
+    border-radius:7px;
+    display:flex;align-items:center;justify-content:center;
+    font-family:'Fraunces',serif;
+    font-weight:700;
+    font-size:13px;
+  }
+  .reflect-text{font-size:13.5px;line-height:1.55;}
+  .reflect-cite{
+    display:block;
+    font-size:11.5px;
+    font-style:italic;
+    color:var(--ink-soft);
+    margin-top:2px;
+  }
+
+  .reset-row{
+    text-align:center;
+    margin-top:1.5rem;
+  }
+  .reset-btn{
+    background:none;
+    border:1px solid var(--line);
+    color:var(--ink-soft);
+    font-size:13px;
+    padding:8px 18px;
+    border-radius:999px;
+    cursor:pointer;
+    font-family:'Inter',sans-serif;
+  }
+  .reset-btn:hover{border-color:var(--ink-soft);}
+
+  @media (max-width:480px){
+    .options{grid-template-columns:repeat(2,1fr);}
+    .block{width:42px;height:42px;font-size:20px;}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="eyebrow">GenAI evaluation heuristic</div>
+    <div class="blocks">
+      <div class="block">V</div>
+      <div class="block">O</div>
+      <div class="block">I</div>
+      <div class="block">C</div>
+      <div class="block">E</div>
+    </div>
+    <h1>Using Claude for kindergarten report card feedback</h1>
+    <p class="sub">Five checks for social interaction comments, behaviour observations, and reading progress notes before anything goes home to a parent.</p>
+  </header>
+
+  <div class="score-panel">
+    <div class="score-row">
+      <div>
+        <span class="score-num" id="scoreNum">0</span>
+        <span class="score-max">/ 45</span>
+      </div>
+      <div class="score-band band-low" id="scoreBand">Not started</div>
+    </div>
+    <div class="track"><div class="track-fill" id="trackFill"></div></div>
+    <div class="band-note" id="bandNote">Answer the questions in each category below to see whether this comment is ready to send home.</div>
+    <div id="reflectBox" style="display:none;margin-top:0.9rem;padding-top:0.9rem;border-top:1px solid var(--line);">
+      <p style="font-size:12.5px;font-weight:600;color:var(--ink-soft);margin:0 0 0.5rem;">If this score concerns you, sit with these before you revise:</p>
+      <ol style="margin:0;padding-left:18px;font-size:13px;line-height:1.55;color:var(--ink);">
+        <li>Which category scored lowest, and what in your own notes or prompt would need to change to fix it, rather than just editing the output?</li>
+        <li>Is there anything in the draft you can't verify against what you actually know about this child? UBC's guidelines call this human oversight, not a one-time check.</li>
+        <li>If a parent or colleague asked exactly how you used AI here, could you explain it plainly? UBC's guidelines name this as transparency.</li>
+      </ol>
+    </div>
+  </div>
+
+  <div id="categories"></div>
+
+  <div class="reflect" id="reflectPanel">
+    <div class="reflect-title">If this score concerns you</div>
+    <div class="reflect-sub">You've answered all 15 questions. If your score gives you pause, here are five questions, grounded in UBC's GenAI guidelines, to help you think through what to do next before this comment goes home.</div>
+    <ul class="reflect-list" id="reflectList"></ul>
+  </div>
+
+  <div class="reset-row">
+    <button class="reset-btn" id="resetBtn">Reset all answers</button>
+  </div>
+
+</div>
+
+<script>
+const CATEGORIES = [
+  {
+    letter: "V",
+    color: "forest",
+    title: "Verify before you trust it",
+    subtitle: "Accuracy",
+    note: "Horvath (2025) and Suchman (2023) both warn against treating AI output as automatically trustworthy just because it sounds fluent or confident.",
+    questions: [
+      "Have I checked every detail against my own notes or records, rather than assuming Claude got it right?",
+      "Does this match what actually happened with this child, not a generic or invented example?",
+      "Would I be comfortable putting my name on this exact wording, knowing I'm accountable to parents for it?"
+    ]
+  },
+  {
+    letter: "O",
+    color: "mustard",
+    title: "Own your voice",
+    subtitle: "Authorship",
+    note: "Horvath (2025) warns that when teachers outsource feedback to AI, they imply meaning-making is beyond human capacity.",
+    questions: [
+      "Did I use Claude's draft as a starting point for ideas or phrasing, rather than copying and pasting it as-is?",
+      "Does the final version still sound like how I actually talk to families, not a generic AI tone?",
+      "Did I decide what to keep, cut, or emphasize, rather than letting Claude decide what matters?"
+    ]
+  },
+  {
+    letter: "I",
+    color: "rose",
+    title: "Individualized and actionable",
+    subtitle: "Relevance",
+    note: "Suchman (2023) warns that turning practices into data involves \u201creduction\u201d \u2014 eliminating the details that don\u2019t fit a pattern, which is exactly the specificity a child needs kept in.",
+    questions: [
+      "Is this specific to this child's real moments, not something that could apply to any student?",
+      "Does it note progress or change compared to the beginning of the school year or last semester's record?",
+      "Does it give the family something concrete they can do at home?"
+    ]
+  },
+  {
+    letter: "C",
+    color: "forest",
+    title: "Confidentiality first",
+    subtitle: "Privacy",
+    note: "UBC\u2019s GenAI Teaching & Learning Guidelines name privacy and confidentiality as a core principle for any GenAI use in teaching and learning.",
+    questions: [
+      "Did I remove the child's name and identifying details before sending anything to Claude (e.g. \"Student A\")?",
+      "Did I keep out other sensitive information, like family circumstances or other children's names?",
+      "Am I confident this fits my school's expectations for handling student data?"
+    ]
+  },
+  {
+    letter: "E",
+    color: "mustard",
+    title: "Environmental and ethical proportion",
+    subtitle: "Sustainability",
+    note: "Winterson (2021) calls AI \u201can energy guzzler\u201d; Suchman (2023) names CO2 emissions among the real costs of large language models; Bucher (2025) flags environmental impact as one of AI\u2019s more immediate, underdiscussed harms.",
+    questions: [
+      "Is this AI use necessary for the task, given the energy cost of running these queries?",
+      "Could I have done this about as well without AI, or am I using it because it genuinely helps?",
+      "Would I be comfortable explaining how I used AI here if a parent or colleague asked?"
+    ]
+  }
+];
+
+const REFLECT_QUESTIONS = [
+  {
+    letter: "V",
+    color: "forest",
+    text: "Which detail in this comment am I least sure is accurate, and what will I check against my own notes before it goes home?",
+    cite: "UBC: all GenAI outputs should undergo human review before sharing."
+  },
+  {
+    letter: "O",
+    color: "mustard",
+    text: "Where does this sound more like Claude than like me, and what will I rewrite so it reflects my own judgment?",
+    cite: "UBC: use of GenAI should be acknowledged and authorship kept clear."
+  },
+  {
+    letter: "I",
+    color: "rose",
+    text: "What specific detail about this child did the wording flatten or lose, and how will I add it back in?",
+    cite: "UBC: biased or inaccurate outputs risk producing harmful, inequitable results."
+  },
+  {
+    letter: "C",
+    color: "forest",
+    text: "Did anything identifying slip into what I typed, and what will I remove or anonymize before I use this again?",
+    cite: "UBC: GenAI use should protect the privacy and confidentiality of personal information."
+  },
+  {
+    letter: "E",
+    color: "mustard",
+    text: "Was this AI use actually necessary here, and going forward, when will I choose to just write it myself instead?",
+    cite: "UBC: users are accountable for the consequences of the outputs they share."
+  }
+];
+
+const colorMap = {
+  forest: "#2F5233",
+  mustard: "#D9A441",
+  rose: "#C97B84"
+};
+const letterTextMap = {
+  forest: "#F1F3EA",
+  mustard: "#3B2A0C",
+  rose: "#3E1C21"
+};
+
+const reflectList = document.getElementById("reflectList");
+REFLECT_QUESTIONS.forEach((q) => {
+  const li = document.createElement("li");
+  li.className = "reflect-item";
+  li.innerHTML = `
+    <div class="reflect-num" style="background:${colorMap[q.color]};color:${letterTextMap[q.color]}">${q.letter}</div>
+    <div class="reflect-text">${q.text}<span class="reflect-cite">${q.cite}</span></div>
+  `;
+  reflectList.appendChild(li);
+});
+
+const state = {};
+CATEGORIES.forEach((cat, ci) => {
+  state[ci] = cat.questions.map(() => null);
+});
+
+const container = document.getElementById("categories");
+
+CATEGORIES.forEach((cat, ci) => {
+  const catEl = document.createElement("div");
+  catEl.className = "category";
+
+  const head = document.createElement("div");
+  head.className = "cat-head";
+  head.innerHTML = `
+    <div class="cat-letter" style="background:${colorMap[cat.color]};color:${letterTextMap[cat.color]}">${cat.letter}</div>
+    <div class="cat-title">${cat.title}<span>${cat.subtitle}</span></div>
+    <div class="cat-caret">&#9660;</div>
+  `;
+  head.addEventListener("click", () => {
+    catEl.classList.toggle("open");
+    const body = catEl.querySelector(".cat-body");
+    body.style.maxHeight = catEl.classList.contains("open") ? body.scrollHeight + "px" : "0px";
+  });
+
+  const body = document.createElement("div");
+  body.className = "cat-body";
+
+  const noteEl = document.createElement("div");
+  noteEl.className = "reading-note";
+  noteEl.textContent = cat.note;
+  body.appendChild(noteEl);
+
+  cat.questions.forEach((q, qi) => {
+    const qEl = document.createElement("div");
+    qEl.className = "question";
+    qEl.innerHTML = `<div class="q-text">${q}</div>`;
+
+    const opts = document.createElement("div");
+    opts.className = "options";
+    ["Not yet", "Somewhat", "Mostly", "Fully"].forEach((label, val) => {
+      const opt = document.createElement("div");
+      opt.className = "opt";
+      opt.textContent = label;
+      opt.addEventListener("click", () => {
+        state[ci][qi] = val;
+        opts.querySelectorAll(".opt").forEach(o => o.classList.remove("selected"));
+        opt.classList.add("selected");
+        updateScore();
+      });
+      opts.appendChild(opt);
+    });
+
+    qEl.appendChild(opts);
+    body.appendChild(qEl);
+  });
+
+  catEl.appendChild(head);
+  catEl.appendChild(body);
+  container.appendChild(catEl);
+});
+
+function updateScore(){
+  let total = 0;
+  let answered = 0;
+  Object.values(state).forEach(arr => arr.forEach(v => {
+    if (v !== null){ total += v; answered++; }
+  }));
+
+  document.getElementById("scoreNum").textContent = total;
+  const pct = Math.round((total / 45) * 100);
+  document.getElementById("trackFill").style.width = pct + "%";
+
+  const totalQuestions = CATEGORIES.reduce((sum, cat) => sum + cat.questions.length, 0);
+  document.getElementById("reflectPanel").classList.toggle("show", answered === totalQuestions);
+
+  const bandEl = document.getElementById("scoreBand");
+  const noteEl = document.getElementById("bandNote");
+
+  if (answered === 0){
+    bandEl.textContent = "Not started";
+    bandEl.className = "score-band band-low";
+    noteEl.textContent = "Answer the questions in each category below to see whether this comment is ready to send home.";
+    return;
+  }
+
+  if (total <= 15){
+    bandEl.textContent = "Pause and revise";
+    bandEl.className = "score-band band-low";
+    noteEl.textContent = "This draft needs real rework before it goes to a parent. Go back through the flagged categories first.";
+  } else if (total <= 30){
+    bandEl.textContent = "Getting there";
+    bandEl.className = "score-band band-mid";
+    noteEl.textContent = "A solid draft, but review the categories scoring lowest before sending it home.";
+  } else {
+    bandEl.textContent = "Ready to share";
+    bandEl.className = "score-band band-high";
+    noteEl.textContent = "This meets your standard for parent-ready, child-specific feedback.";
+  }
+}
+
+document.getElementById("resetBtn").addEventListener("click", () => {
+  CATEGORIES.forEach((cat, ci) => {
+    state[ci] = cat.questions.map(() => null);
+  });
+  document.querySelectorAll(".opt.selected").forEach(o => o.classList.remove("selected"));
+  updateScore();
+});
+
+updateScore();
+</script>
+</body>
+</html>
